@@ -214,12 +214,7 @@ func (w *fileLogWriter) initFd() error {
 	w.dailyOpenDate = w.dailyOpenTime.Day()
 	w.hourlyOpenTime = time.Now()
 	w.hourlyOpenDate = w.hourlyOpenTime.Hour()
-	w.maxLinesCurLines = 0
-	if w.Hourly {
-		go w.hourlyRotate(w.hourlyOpenTime)
-	} else if w.Daily {
-		go w.dailyRotate(w.dailyOpenTime)
-	}
+
 	if fInfo.Size() > 0 && w.MaxLines > 0 {
 		count, err := w.lines()
 		if err != nil {
@@ -228,35 +223,6 @@ func (w *fileLogWriter) initFd() error {
 		w.maxLinesCurLines = count
 	}
 	return nil
-}
-
-func (w *fileLogWriter) dailyRotate(openTime time.Time) {
-	y, m, d := openTime.Add(24 * time.Hour).Date()
-	nextDay := time.Date(y, m, d, 0, 0, 0, 0, openTime.Location())
-	tm := time.NewTimer(time.Duration(nextDay.UnixNano() - openTime.UnixNano() + 100))
-	<-tm.C
-	w.Lock()
-	if w.needRotateDaily(0, time.Now().Day()) {
-		if err := w.doRotate(time.Now()); err != nil {
-			fmt.Fprintf(os.Stderr, "FileLogWriter(%q): %s\n", w.Filename, err)
-		}
-	}
-	w.Unlock()
-}
-
-func (w *fileLogWriter) hourlyRotate(openTime time.Time) {
-	y, m, d := openTime.Add(1 * time.Hour).Date()
-	h, _, _ := openTime.Add(1 * time.Hour).Clock()
-	nextHour := time.Date(y, m, d, h, 0, 0, 0, openTime.Location())
-	tm := time.NewTimer(time.Duration(nextHour.UnixNano() - openTime.UnixNano() + 100))
-	<-tm.C
-	w.Lock()
-	if w.needRotateHourly(0, time.Now().Hour()) {
-		if err := w.doRotate(time.Now()); err != nil {
-			fmt.Fprintf(os.Stderr, "FileLogWriter(%q): %s\n", w.Filename, err)
-		}
-	}
-	w.Unlock()
 }
 
 func (w *fileLogWriter) lines() (int, error) {
@@ -289,6 +255,7 @@ func (w *fileLogWriter) lines() (int, error) {
 // DoRotate means it need to write file in new file.
 // new file name like xx.2013-01-01.log (daily) or xx.001.log (by line or size)
 func (w *fileLogWriter) doRotate(logTime time.Time) error {
+	fmt.Println("begin doRotate")
 	// file exists
 	// Find the next available number
 	num := w.MaxFilesCurFiles + 1
@@ -317,11 +284,11 @@ func (w *fileLogWriter) doRotate(logTime time.Time) error {
 	// only when one of them be setted, then the file would be splited
 	if w.MaxLines > 0 || w.MaxSize > 0 {
 		for ; err == nil && num <= w.MaxFiles; num++ {
-			fName = w.fileNameOnly + fmt.Sprintf(".%s.%03d%s", logTime.Format(format), num, w.suffix)
+			fName = w.fileNameOnly + fmt.Sprintf("%s.%s.%03d", w.suffix, logTime.Format(format), num)
 			_, err = os.Lstat(fName)
 		}
 	} else {
-		fName = w.fileNameOnly + fmt.Sprintf(".%s.%03d%s", openTime.Format(format), num, w.suffix)
+		fName = w.fileNameOnly + fmt.Sprintf("%s.%s.%03d", w.suffix, openTime.Format(format), num)
 		_, err = os.Lstat(fName)
 		w.MaxFilesCurFiles = num
 	}
